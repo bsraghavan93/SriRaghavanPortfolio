@@ -19,12 +19,25 @@ export const LoadingProvider = ({ children }: PropsWithChildren) => {
   const [isLoading, setIsLoading] = useState(true);
   const [loading, setLoading] = useState(0);
 
+  useEffect(() => {
+    let percent = 0;
+    const interval = setInterval(() => {
+      percent += Math.floor(Math.random() * 8) + 3;
+      if (percent >= 100) {
+        clearInterval(interval);
+        setLoading(100);
+      } else {
+        setLoading(percent);
+      }
+    }, 80);
+    return () => clearInterval(interval);
+  }, []);
+
   const value = {
     isLoading,
     setIsLoading,
     setLoading,
   };
-  useEffect(() => {}, [loading]);
 
   return (
     <LoadingContext.Provider value={value as LoadingType}>
