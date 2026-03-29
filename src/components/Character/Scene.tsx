@@ -4,11 +4,9 @@ import { useGLTF, Float, Environment } from "@react-three/drei";
 import { EffectComposer, Bloom } from "@react-three/postprocessing";
 import * as THREE from "three";
 import { useLoading } from "../../context/LoadingProvider";
-import { setProgress } from "../Loading";
 
 const mouse = { x: 0, y: 0 };
 
-// Error boundary so a missing/broken model doesn't crash the whole page
 class SceneErrorBoundary extends Component<
   { children: ReactNode; onError: () => void },
   { hasError: boolean }
@@ -37,7 +35,6 @@ function LaptopModel({ onLoaded }: { onLoaded: () => void }) {
   useEffect(() => {
     if (initialized.current) return;
     initialized.current = true;
-
     scene.traverse((child) => {
       if (child instanceof THREE.Mesh) {
         const name = child.name.toLowerCase();
@@ -55,7 +52,6 @@ function LaptopModel({ onLoaded }: { onLoaded: () => void }) {
         child.castShadow = true;
       }
     });
-
     onLoaded();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -86,19 +82,32 @@ useGLTF.preload("/models/laptop.glb");
 
 const Scene = () => {
   const { setLoading } = useLoading();
-  const progressRef = useRef(setProgress((value) => setLoading(value)));
-  const loadedRef = useRef(false);
+  const completedRef = useRef(false);
 
-  const handleLoaded = () => {
-    if (loadedRef.current) return;
-    loadedRef.current = true;
-    progressRef.current.loaded();
+  const complete = () => {
+    if (completedRef.current) return;
+    completedRef.current = true;
+    setLoading(100);
   };
 
-  // Fallback: complete loading after 5s even if model fails
+  // Animate progress 0→100 over ~2s, then dismiss
   useEffect(() => {
-    const timeout = setTimeout(() => handleLoaded(), 5000);
-    return () => clearTimeout(timeout);
+    let percent = 0;
+    const interval = setInterval(() => {
+      percent += Math.floor(Math.random() * 8) + 3;
+      if (percent >= 100) {
+        clearInterval(interval);
+        complete();
+      } else {
+        setLoading(percent);
+      }
+    }, 80);
+    // Hard fallback in case interval is disrupted
+    const fallback = setTimeout(() => complete(), 6000);
+    return () => {
+      clearInterval(interval);
+      clearTimeout(fallback);
+    };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -114,7 +123,7 @@ const Scene = () => {
     <div className="character-container">
       <div className="character-model">
         <div className="character-rim"></div>
-        <SceneErrorBoundary onError={handleLoaded}>
+        <SceneErrorBoundary onError={complete}>
           <Canvas
             gl={{ antialias: false, alpha: true }}
             camera={{ position: [0, 0.5, 8], fov: 25 }}
@@ -124,7 +133,7 @@ const Scene = () => {
             <pointLight position={[5, 5, 5]} intensity={2} color="#7b2fff" />
             <pointLight position={[-5, -2, -3]} intensity={1} color="#2f7bff" />
             <Suspense fallback={null}>
-              <LaptopModel onLoaded={handleLoaded} />
+              <LaptopModel onLoaded={complete} />
               <Environment
                 files="/models/char_enviorment.hdr"
                 environmentIntensity={0.4}
