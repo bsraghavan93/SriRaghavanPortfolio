@@ -20,12 +20,18 @@ const Loading = ({ percent }: { percent: number }) => {
   }
 
   useEffect(() => {
-    import("./utils/initialFX").then((module) => {
+    Promise.all([
+      import("./utils/initialFX"),
+      import("./utils/splitText"),
+    ]).then(([initialFXModule, splitTextModule]) => {
       if (isLoaded) {
         setClicked(true);
         setTimeout(() => {
-          if (module.initialFX) {
-            module.initialFX();
+          if (initialFXModule.initialFX) {
+            initialFXModule.initialFX();
+          }
+          if (splitTextModule.setCareerTimeline) {
+            splitTextModule.setCareerTimeline();
           }
           setIsLoading(false);
         }, 900);
