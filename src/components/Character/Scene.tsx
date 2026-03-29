@@ -1,4 +1,4 @@
-import { Suspense, useEffect, useRef } from "react";
+import { Component, ReactNode, Suspense, useEffect, useRef } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { useGLTF, Float, Environment } from "@react-three/drei";
 import { EffectComposer, Bloom } from "@react-three/postprocessing";
@@ -7,6 +7,27 @@ import { useLoading } from "../../context/LoadingProvider";
 import { setProgress } from "../Loading";
 
 const mouse = { x: 0, y: 0 };
+
+// Error boundary so a missing/broken model doesn't crash the whole page
+class SceneErrorBoundary extends Component<
+  { children: ReactNode; onError: () => void },
+  { hasError: boolean }
+> {
+  constructor(props: { children: ReactNode; onError: () => void }) {
+    super(props);
+    this.state = { hasError: false };
+  }
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+  componentDidCatch() {
+    this.props.onError();
+  }
+  render() {
+    if (this.state.hasError) return null;
+    return this.props.children;
+  }
+}
 
 function LaptopModel({ onLoaded }: { onLoaded: () => void }) {
   const { scene } = useGLTF("/models/laptop.glb");
@@ -66,10 +87,19 @@ useGLTF.preload("/models/laptop.glb");
 const Scene = () => {
   const { setLoading } = useLoading();
   const progressRef = useRef(setProgress((value) => setLoading(value)));
+  const loadedRef = useRef(false);
 
   const handleLoaded = () => {
+    if (loadedRef.current) return;
+    loadedRef.current = true;
     progressRef.current.loaded();
   };
+
+  // Fallback: complete loading after 5s even if model fails
+  useEffect(() => {
+    const timeout = setTimeout(() => handleLoaded(), 5000);
+    return () => clearTimeout(timeout);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const onMouseMove = (e: MouseEvent) => {
@@ -84,25 +114,27 @@ const Scene = () => {
     <div className="character-container">
       <div className="character-model">
         <div className="character-rim"></div>
-        <Canvas
-          gl={{ antialias: false, alpha: true }}
-          camera={{ position: [0, 0.5, 8], fov: 25 }}
-          dpr={Math.min(window.devicePixelRatio, 2)}
-        >
-          <ambientLight intensity={0.2} />
-          <pointLight position={[5, 5, 5]} intensity={2} color="#7b2fff" />
-          <pointLight position={[-5, -2, -3]} intensity={1} color="#2f7bff" />
-          <Suspense fallback={null}>
-            <LaptopModel onLoaded={handleLoaded} />
-            <Environment
-              files="/models/char_enviorment.hdr"
-              environmentIntensity={0.4}
-            />
-            <EffectComposer>
-              <Bloom luminanceThreshold={0.4} mipmapBlur intensity={2} />
-            </EffectComposer>
-          </Suspense>
-        </Canvas>
+        <SceneErrorBoundary onError={handleLoaded}>
+          <Canvas
+            gl={{ antialias: false, alpha: true }}
+            camera={{ position: [0, 0.5, 8], fov: 25 }}
+            dpr={Math.min(window.devicePixelRatio, 2)}
+          >
+            <ambientLight intensity={0.2} />
+            <pointLight position={[5, 5, 5]} intensity={2} color="#7b2fff" />
+            <pointLight position={[-5, -2, -3]} intensity={1} color="#2f7bff" />
+            <Suspense fallback={null}>
+              <LaptopModel onLoaded={handleLoaded} />
+              <Environment
+                files="/models/char_enviorment.hdr"
+                environmentIntensity={0.4}
+              />
+              <EffectComposer>
+                <Bloom luminanceThreshold={0.4} mipmapBlur intensity={2} />
+              </EffectComposer>
+            </Suspense>
+          </Canvas>
+        </SceneErrorBoundary>
       </div>
     </div>
   );
