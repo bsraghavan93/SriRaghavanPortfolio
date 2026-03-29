@@ -1,159 +1,110 @@
-import { useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useRef } from "react";
+import { Canvas, useFrame } from "@react-three/fiber";
+import { useGLTF, Float, Environment } from "@react-three/drei";
+import { EffectComposer, Bloom } from "@react-three/postprocessing";
 import * as THREE from "three";
-import setCharacter from "./utils/character";
-import setLighting from "./utils/lighting";
 import { useLoading } from "../../context/LoadingProvider";
-import handleResize from "./utils/resizeUtils";
-import {
-  handleMouseMove,
-  handleTouchEnd,
-  handleHeadRotation,
-  handleTouchMove,
-} from "./utils/mouseUtils";
-import setAnimations from "./utils/animationUtils";
 import { setProgress } from "../Loading";
 
-const Scene = () => {
-  const canvasDiv = useRef<HTMLDivElement | null>(null);
-  const hoverDivRef = useRef<HTMLDivElement>(null);
-  const sceneRef = useRef(new THREE.Scene());
-  const { setLoading } = useLoading();
+const mouse = { x: 0, y: 0 };
 
-  const [character, setChar] = useState<THREE.Object3D | null>(null);
+function LaptopModel({ onLoaded }: { onLoaded: () => void }) {
+  const { scene } = useGLTF("/models/laptop.glb");
+  const groupRef = useRef<THREE.Group>(null);
+  const initialized = useRef(false);
+
   useEffect(() => {
-    if (canvasDiv.current) {
-      let rect = canvasDiv.current.getBoundingClientRect();
-      let container = { width: rect.width, height: rect.height };
-      const aspect = container.width / container.height;
-      const scene = sceneRef.current;
+    if (initialized.current) return;
+    initialized.current = true;
 
-      const renderer = new THREE.WebGLRenderer({
-        alpha: true,
-        antialias: true,
-      });
-      renderer.setSize(container.width, container.height);
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-      renderer.toneMapping = THREE.ACESFilmicToneMapping;
-      renderer.toneMappingExposure = 1;
-      canvasDiv.current.appendChild(renderer.domElement);
-
-      const camera = new THREE.PerspectiveCamera(14.5, aspect, 0.1, 1000);
-      camera.position.z = 10;
-      camera.position.set(0, 13.1, 24.7);
-      camera.zoom = 1.1;
-      camera.updateProjectionMatrix();
-
-      let headBone: THREE.Object3D | null = null;
-      let screenLight: any | null = null;
-      let mixer: THREE.AnimationMixer;
-
-      const clock = new THREE.Clock();
-
-      const light = setLighting(scene);
-      let progress = setProgress((value) => setLoading(value));
-      const { loadCharacter } = setCharacter(renderer, scene, camera);
-
-      loadCharacter().then((gltf) => {
-        if (gltf) {
-          const animations = setAnimations(gltf);
-          hoverDivRef.current && animations.hover(gltf, hoverDivRef.current);
-          mixer = animations.mixer;
-          let character = gltf.scene;
-          setChar(character);
-          scene.add(character);
-          headBone = character.getObjectByName("spine006") || null;
-          screenLight = character.getObjectByName("screenlight") || null;
-          progress.loaded().then(() => {
-            setTimeout(() => {
-              light.turnOnLights();
-              animations.startIntro();
-            }, 2500);
-          });
-          window.addEventListener("resize", () =>
-            handleResize(renderer, camera, canvasDiv, character)
-          );
-        }
-      });
-
-      let mouse = { x: 0, y: 0 },
-        interpolation = { x: 0.1, y: 0.2 };
-
-      const onMouseMove = (event: MouseEvent) => {
-        handleMouseMove(event, (x, y) => (mouse = { x, y }));
-      };
-      let debounce: number | undefined;
-      const onTouchStart = (event: TouchEvent) => {
-        const element = event.target as HTMLElement;
-        debounce = setTimeout(() => {
-          element?.addEventListener("touchmove", (e: TouchEvent) =>
-            handleTouchMove(e, (x, y) => (mouse = { x, y }))
-          );
-        }, 200);
-      };
-
-      const onTouchEnd = () => {
-        handleTouchEnd((x, y, interpolationX, interpolationY) => {
-          mouse = { x, y };
-          interpolation = { x: interpolationX, y: interpolationY };
+    scene.traverse((child) => {
+      if (child instanceof THREE.Mesh) {
+        const name = child.name.toLowerCase();
+        const isScreen =
+          name.includes("screen") ||
+          name.includes("display") ||
+          name.includes("monitor");
+        child.material = new THREE.MeshStandardMaterial({
+          color: isScreen ? "#050510" : "#12122a",
+          emissive: isScreen ? "#7b2fff" : "#3a1a8c",
+          emissiveIntensity: isScreen ? 2.5 : 0.2,
+          metalness: 0.85,
+          roughness: isScreen ? 0.05 : 0.25,
         });
-      };
-
-      document.addEventListener("mousemove", (event) => {
-        onMouseMove(event);
-      });
-      const landingDiv = document.getElementById("landingDiv");
-      if (landingDiv) {
-        landingDiv.addEventListener("touchstart", onTouchStart);
-        landingDiv.addEventListener("touchend", onTouchEnd);
+        child.castShadow = true;
       }
-      const animate = () => {
-        requestAnimationFrame(animate);
-        if (headBone) {
-          handleHeadRotation(
-            headBone,
-            mouse.x,
-            mouse.y,
-            interpolation.x,
-            interpolation.y,
-            THREE.MathUtils.lerp
-          );
-          light.setPointLight(screenLight);
-        }
-        const delta = clock.getDelta();
-        if (mixer) {
-          mixer.update(delta);
-        }
-        renderer.render(scene, camera);
-      };
-      animate();
-      return () => {
-        clearTimeout(debounce);
-        scene.clear();
-        renderer.dispose();
-        window.removeEventListener("resize", () =>
-          handleResize(renderer, camera, canvasDiv, character!)
-        );
-        if (canvasDiv.current) {
-          canvasDiv.current.removeChild(renderer.domElement);
-        }
-        if (landingDiv) {
-          document.removeEventListener("mousemove", onMouseMove);
-          landingDiv.removeEventListener("touchstart", onTouchStart);
-          landingDiv.removeEventListener("touchend", onTouchEnd);
-        }
-      };
-    }
+    });
+
+    onLoaded();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useFrame(() => {
+    if (!groupRef.current) return;
+    groupRef.current.rotation.y = THREE.MathUtils.lerp(
+      groupRef.current.rotation.y,
+      mouse.x * 0.4,
+      0.04
+    );
+    groupRef.current.rotation.x = THREE.MathUtils.lerp(
+      groupRef.current.rotation.x,
+      mouse.y * 0.15,
+      0.04
+    );
+  });
+
+  return (
+    <group ref={groupRef}>
+      <Float speed={1.4} rotationIntensity={0.15} floatIntensity={0.5}>
+        <primitive object={scene} scale={4} rotation={[0.15, -0.4, 0]} />
+      </Float>
+    </group>
+  );
+}
+
+useGLTF.preload("/models/laptop.glb");
+
+const Scene = () => {
+  const { setLoading } = useLoading();
+  const progressRef = useRef(setProgress((value) => setLoading(value)));
+
+  const handleLoaded = () => {
+    progressRef.current.loaded();
+  };
+
+  useEffect(() => {
+    const onMouseMove = (e: MouseEvent) => {
+      mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+      mouse.y = -((e.clientY / window.innerHeight) * 2 - 1);
+    };
+    document.addEventListener("mousemove", onMouseMove);
+    return () => document.removeEventListener("mousemove", onMouseMove);
   }, []);
 
   return (
-    <>
-      <div className="character-container">
-        <div className="character-model" ref={canvasDiv}>
-          <div className="character-rim"></div>
-          <div className="character-hover" ref={hoverDivRef}></div>
-        </div>
+    <div className="character-container">
+      <div className="character-model">
+        <div className="character-rim"></div>
+        <Canvas
+          gl={{ antialias: false, alpha: true }}
+          camera={{ position: [0, 0.5, 8], fov: 25 }}
+          dpr={Math.min(window.devicePixelRatio, 2)}
+        >
+          <ambientLight intensity={0.2} />
+          <pointLight position={[5, 5, 5]} intensity={2} color="#7b2fff" />
+          <pointLight position={[-5, -2, -3]} intensity={1} color="#2f7bff" />
+          <Suspense fallback={null}>
+            <LaptopModel onLoaded={handleLoaded} />
+            <Environment
+              files="/models/char_enviorment.hdr"
+              environmentIntensity={0.4}
+            />
+            <EffectComposer>
+              <Bloom luminanceThreshold={0.4} mipmapBlur intensity={2} />
+            </EffectComposer>
+          </Suspense>
+        </Canvas>
       </div>
-    </>
+    </div>
   );
 };
 
