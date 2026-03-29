@@ -28,7 +28,7 @@ class SceneErrorBoundary extends Component<
 }
 
 function LaptopModel({ onLoaded }: { onLoaded: () => void }) {
-  const { scene } = useGLTF("/models/laptop.glb");
+  const { scene } = useGLTF("/models/character.glb");
   const groupRef = useRef<THREE.Group>(null);
   const initialized = useRef(false);
 
@@ -78,7 +78,7 @@ function LaptopModel({ onLoaded }: { onLoaded: () => void }) {
   );
 }
 
-useGLTF.preload("/models/laptop.glb");
+useGLTF.preload("/models/character.glb");
 
 const Scene = () => {
   const { setLoading } = useLoading();
